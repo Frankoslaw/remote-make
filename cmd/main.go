@@ -25,7 +25,6 @@ func main() {
 		StepTemplates: []domain.StepTemplate{
 			{
 				ID:       uuid.New(),
-				Type:     domain.NestedTaskStep,
 				SeqOrder: 1,
 				TaskTemplate: domain.TaskTemplate{
 					ID:   uuid.New(),
@@ -38,7 +37,6 @@ func main() {
 					StepTemplates: []domain.StepTemplate{
 						{
 							ID:       uuid.New(),
-							Type:     domain.ProcessStep,
 							SeqOrder: 1,
 							ProcessTemplate: domain.ProcessTemplate{
 								ID:  uuid.New(),
@@ -47,7 +45,6 @@ func main() {
 						},
 						{
 							ID:       uuid.New(),
-							Type:     domain.ProcessStep,
 							SeqOrder: 2,
 							ProcessTemplate: domain.ProcessTemplate{
 								ID:  uuid.New(),
@@ -59,7 +56,6 @@ func main() {
 			},
 			{
 				ID:       uuid.New(),
-				Type:     domain.ProcessStep,
 				SeqOrder: 2,
 				ProcessTemplate: domain.ProcessTemplate{
 					ID:  uuid.New(),
@@ -79,11 +75,14 @@ func main() {
 	// Worker services
 	procRunner := adapters.NewLocalProcessRunner()
 	stepRunner := services.NewStepRunner(identRepo, eventBus, procRunner)
-	_ = stepRunner
+	stepRunnerHandler := adapters.NewStepRunnerHandler(identRepo, stepRunner)
+	stepRunnerHandler.RegisterSubs(eventBus)
 
 	// Master services
 	nodeManager := services.NewNodeManager(identRepo, eventBus)
-	taskRunner := services.NewTaskRunner(identRepo, eventBus, nodeManager)
+	nodeManagerHandler := adapters.NewNodeManagerHandler(identRepo, nodeManager)
+	nodeManagerHandler.RegisterSubs(eventBus)
+	taskRunner := services.NewTaskRunner(identRepo, eventBus)
 
 	ctx, cancle := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancle()

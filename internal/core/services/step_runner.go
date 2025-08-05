@@ -6,61 +6,71 @@ import (
 	"fmt"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/nats-io/nats.go"
 )
 
 type StepRunner struct {
-	nodeIDRepo  ports.NodeIdentityRepo
-	eventBus    ports.EventBus
-	procRunner  ports.ProcessRunner
-	stepTimeout time.Duration
+	nodeIDRepo ports.NodeIdentityRepo
+	eventBus   ports.EventBus
+	procRunner ports.ProcessRunner
 }
 
 func NewStepRunner(ni ports.NodeIdentityRepo, ev ports.EventBus, pr ports.ProcessRunner) *StepRunner {
-	nodeID := ni.NodeUUID()
-
-	r := &StepRunner{nodeIDRepo: ni, eventBus: ev, procRunner: pr, stepTimeout: 5 * time.Second}
-	ev.Subscribe(fmt.Sprintf(domain.EventStepStart, nodeID, "*"), r.handleStart)
-
-	return r
+	return &StepRunner{nodeIDRepo: ni, eventBus: ev, procRunner: pr}
 }
 
-func (r *StepRunner) handleStart(msg *nats.Msg) {
-	var tmpl domain.StepTemplate
-	err := json.Unmarshal(msg.Data, &tmpl)
-	if err != nil {
-		errorStep := domain.Step{ID: tmpl.ID, State: domain.StepError}
-		_ = msg.Respond(marshal(errorStep))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), r.stepTimeout)
-	defer cancel()
-	step, _ := r.Start(ctx, tmpl)
-
-	_ = msg.Respond(marshal(step))
-}
-
-func (r *StepRunner) Start(ctx context.Context, st domain.StepTemplate) (domain.Step, error) {
-	res, err := r.procRunner.Start(ctx, st.ProcessTemplate)
+func (s *StepRunner) Start(ctx context.Context, st domain.StepTemplate) (domain.Step, error) {
 	step := domain.Step{
-		ID:            uuid.New(),
-		ProcessResult: res,
+		ID:    uuid.New(),
+		State: domain.StepScheduled,
 	}
 
-	if err != nil {
-		step.State = domain.StepError
-	} else {
+	if st.TaskTemplate.ID != uuid.Nil {
+		task, err := s.startTask(ctx, st.TaskTemplate)
+		step.Task = task
+
+		if err != nil {
+			step.State = domain.StepError
+			return step, err
+		}
+		if task.State == domain.TaskError {
+			step.State = domain.StepError
+			return step, err
+		}
+	}
+
+	if st.ProcessTemplate.ID != uuid.Nil {
+		res, err := s.procRunner.Start(ctx, st.ProcessTemplate)
+		step.ProcessResult = res
+
+		if err != nil {
+			step.State = domain.StepError
+		}
+	}
+
+	if step.State != domain.StepError {
 		step.State = domain.StepDone
 	}
 
-	return step, err
+	return step, nil
 }
 
-func marshal(step domain.Step) []byte {
-	data, _ := json.Marshal(step)
-	return data
+func (s *StepRunner) startTask(ctx context.Context, tt domain.TaskTemplate) (domain.Task, error) {
+	nodeID := s.nodeIDRepo.NodeUUID()
+
+	subject := fmt.Sprintf(domain.EventTaskStart, nodeID)
+	payload, _ := json.Marshal(tt)
+
+	response, err := s.eventBus.Request(ctx, subject, payload)
+	if err != nil {
+		return domain.Task{ID: uuid.New(), State: domain.TaskError}, err
+	}
+
+	var task domain.Task
+	if err := json.Unmarshal(response.Data, &task); err != nil {
+		return domain.Task{ID: uuid.New(), State: domain.TaskError}, err
+	}
+
+	return task, nil
 }

@@ -29,9 +29,9 @@ func (n *NodeManager) Provision(ctx context.Context, wt domain.WorkerTemplate) (
 	panic("unimplemented")
 }
 
-func (n *NodeManager) Terminate(ctx context.Context, w domain.Worker) error {
+func (n *NodeManager) Terminate(ctx context.Context, w domain.Worker) (domain.Worker, error) {
 	if w.NodeID == n.nodeIDRepo.NodeUUID() {
-		return nil
+		return w, nil
 	}
 
 	panic("unimplemented")
