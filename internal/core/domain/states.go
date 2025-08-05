@@ -3,6 +3,7 @@ package domain
 type WorkerState int
 type TaskState int
 type StepState int
+type ProcessState int
 
 const (
 	WorkerScheduled WorkerState = iota + 100
@@ -25,4 +26,11 @@ const (
 	StepRunning
 	StepDone
 	StepError
+)
+
+const (
+	ProcessScheduled ProcessState = iota + 400
+	ProcessRunning
+	ProcessDone
+	ProcessError
 )

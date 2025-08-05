@@ -19,12 +19,14 @@ type Step struct {
 	ID    uuid.UUID
 	State StepState
 
-	ProcessResult ProcessResult
+	ProcessResult Process
 	Task          Task
 }
 
-type ProcessResult struct {
-	ID       uuid.UUID
+type Process struct {
+	ID    uuid.UUID
+	State ProcessState
+
 	ExitCode int
 	Stdout   string
 	Stderr   string

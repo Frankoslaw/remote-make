@@ -14,16 +14,16 @@ func NewLocalProcessRunner() *LocalProcessRunner {
 	return &LocalProcessRunner{}
 }
 
-func (r *LocalProcessRunner) Run(pt domain.ProcessTemplate) (domain.ProcessResult, error) {
+func (r *LocalProcessRunner) Start(pt domain.ProcessTemplate) (domain.Process, error) {
 	cmd := exec.Command("sh", "-c", pt.Cmd)
 	cmd.Dir = pt.Pwd
 	if pt.Stdin != "" {
 		cmd.Stdin = bytes.NewBufferString(pt.Stdin)
 	}
 
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	err := cmd.Run()
 	exitCode := 0
@@ -31,10 +31,10 @@ func (r *LocalProcessRunner) Run(pt domain.ProcessTemplate) (domain.ProcessResul
 		exitCode = exitErr.ExitCode()
 	}
 
-	return domain.ProcessResult{
+	return domain.Process{
 		ID:       uuid.New(),
 		ExitCode: exitCode,
-		Stdout:   out.String(),
-		Stderr:   "", // optional: split stderr from stdout
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
 	}, err
 }
