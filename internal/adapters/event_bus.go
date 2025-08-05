@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"context"
 	"time"
 
 	"github.com/nats-io/nats-server/v2/server"
@@ -43,9 +44,14 @@ func (n *NatsEventBus) Publish(subject string, data []byte) error {
 	return n.conn.Publish(subject, data)
 }
 
+// TODO: nats.Msg should be abstracted away
 func (n *NatsEventBus) Subscribe(subject string, handler func(m *nats.Msg)) error {
 	_, err := n.conn.Subscribe(subject, handler)
 	return err
+}
+
+func (n *NatsEventBus) Request(ctx context.Context, subject string, data []byte) (*nats.Msg, error) {
+	return n.conn.RequestWithContext(ctx, subject, data)
 }
 
 func (n *NatsEventBus) Shutdown() {

@@ -12,3 +12,4 @@ TODO:
 - [ ] Diffrentiate master and slave steps
 - [ ] Per step workers
 - [ ] One worker and one step per task? Ultra nesting
+- [ ] Decouple event_bus.go from nats.Msg

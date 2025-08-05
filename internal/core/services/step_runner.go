@@ -1,48 +1,51 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
-	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 )
 
 type StepRunner struct {
-	nodeIDRepo ports.NodeIdentityRepo
-	eventBus   ports.EventBus
-	procRunner ports.ProcessRunner
+	nodeIDRepo  ports.NodeIdentityRepo
+	eventBus    ports.EventBus
+	procRunner  ports.ProcessRunner
+	stepTimeout time.Duration
 }
 
 func NewStepRunner(ni ports.NodeIdentityRepo, ev ports.EventBus, pr ports.ProcessRunner) *StepRunner {
 	nodeID := ni.NodeUUID()
-	r := &StepRunner{nodeIDRepo: ni, eventBus: ev, procRunner: pr}
 
-	ev.Subscribe(fmt.Sprintf(domain.EventStepStart, nodeID, "*"), func(msg *nats.Msg) {
-		stepID, _ := uuid.Parse(strings.Split(msg.Subject, ".")[3])
-
-		var st domain.StepTemplate
-		json.Unmarshal(msg.Data, &st)
-
-		step, err := r.Start(st)
-		msgData, _ := json.Marshal(&step)
-
-		if err != nil {
-			ev.Publish(fmt.Sprintf(domain.EventStepError, stepID), msgData)
-			return
-		}
-
-		ev.Publish(fmt.Sprintf(domain.EventStepDone, stepID), msgData)
-	})
+	r := &StepRunner{nodeIDRepo: ni, eventBus: ev, procRunner: pr, stepTimeout: 5 * time.Second}
+	ev.Subscribe(fmt.Sprintf(domain.EventStepStart, nodeID, "*"), r.handleStart)
 
 	return r
 }
 
-func (r *StepRunner) Start(st domain.StepTemplate) (domain.Step, error) {
-	res, err := r.procRunner.Start(st.ProcessTemplate)
+func (r *StepRunner) handleStart(msg *nats.Msg) {
+	var tmpl domain.StepTemplate
+	err := json.Unmarshal(msg.Data, &tmpl)
+	if err != nil {
+		errorStep := domain.Step{ID: tmpl.ID, State: domain.StepError}
+		_ = msg.Respond(marshal(errorStep))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), r.stepTimeout)
+	defer cancel()
+	step, _ := r.Start(ctx, tmpl)
+
+	_ = msg.Respond(marshal(step))
+}
+
+func (r *StepRunner) Start(ctx context.Context, st domain.StepTemplate) (domain.Step, error) {
+	res, err := r.procRunner.Start(ctx, st.ProcessTemplate)
 	step := domain.Step{
 		ID:            uuid.New(),
 		ProcessResult: res,
@@ -55,4 +58,9 @@ func (r *StepRunner) Start(st domain.StepTemplate) (domain.Step, error) {
 	}
 
 	return step, err
+}
+
+func marshal(step domain.Step) []byte {
+	data, _ := json.Marshal(step)
+	return data
 }

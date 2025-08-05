@@ -1,17 +1,14 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
-	"sort"
-	"sync"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/nats-io/nats.go"
 )
 
 type TaskRunner struct {
@@ -24,138 +21,76 @@ func NewTaskRunner(ni ports.NodeIdentityRepo, ev ports.EventBus, nm ports.NodeMa
 	return &TaskRunner{nodeIDRepo: ni, eventBus: ev, nodeManager: nm}
 }
 
-func (t *TaskRunner) Start(tt domain.TaskTemplate) (domain.Task, error) {
-	nodeID := t.nodeIDRepo.NodeUUID()
-
+func (t *TaskRunner) Start(ctx context.Context, tt domain.TaskTemplate) (domain.Task, error) {
 	// Schedule task
-	task := domain.Task{
-		ID:    uuid.New(),
-		State: domain.TaskScheduled,
-	}
-	fmt.Printf("Task %s scheduled (state=%d)\n", tt.Name, task.State)
+	task := domain.Task{ID: uuid.New(), State: domain.TaskScheduled}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	// Provisioning step
-	var worker domain.Worker
-	if tt.WorkerTemplate.IsLocal {
-		worker = domain.Worker{
-			ID:     uuid.New(),
-			State:  domain.WorkerProvisioned,
-			NodeID: nodeID,
-		}
-	} else {
-		w, err := t.nodeManager.Provision(tt.WorkerTemplate)
-		if err != nil {
-			task.State = domain.TaskError
-			return task, err
-		}
-		worker = w
+	// Provision task
+	worker, err := t.nodeManager.Provision(ctx, tt.WorkerTemplate)
+	if err != nil {
+		task.State = domain.TaskError
+		return task, err
 	}
-
 	task.Worker = worker
-	fmt.Printf("Worker %s provisioned (state=%d)\n", tt.WorkerTemplate.Name, worker.State)
 
 	// Run task
 	task.State = domain.TaskRunning
-	fmt.Printf("Task %s running (state=%d)\n", tt.Name, task.State)
-
-	sort.Slice(tt.StepTemplates, func(i, j int) bool {
-		return tt.StepTemplates[i].SeqOrder < tt.StepTemplates[j].SeqOrder
-	})
-
-	for _, stepT := range tt.StepTemplates {
-		// Schedule step
-		step := domain.Step{
-			ID:    uuid.New(),
-			State: domain.StepScheduled,
-		}
-		fmt.Printf("Step %d scheduled (state=%d): %s\n", stepT.SeqOrder, step.State, stepT.ProcessTemplate.Cmd)
-
-		// Trigger step start
-		step.State = domain.StepRunning
-		fmt.Printf("Step %d running (state=%d)\n", stepT.SeqOrder, step.State)
-
-		switch stepT.Type {
-		case domain.ProcessStep:
-			doneCh := make(chan struct{})
-			var once sync.Once
-
-			// Subscribe to StepDone
-			doneSubject := fmt.Sprintf(domain.EventStepDone, step.ID)
-			t.eventBus.Subscribe(doneSubject, func(msg *nats.Msg) {
-				once.Do(func() {
-					json.Unmarshal(msg.Data, &step)
-					fmt.Printf("Step %d done (state=%d)\n", stepT.SeqOrder, step.State)
-					close(doneCh)
-				})
-			})
-
-			// Subscribe to StepError
-			errorSubject := fmt.Sprintf(domain.EventStepError, step.ID)
-			t.eventBus.Subscribe(errorSubject, func(msg *nats.Msg) {
-				once.Do(func() {
-					json.Unmarshal(msg.Data, &step)
-					fmt.Printf("Step %d errored (state=%d)\n", stepT.SeqOrder, step.State)
-					close(doneCh)
-				})
-			})
-
-			msgData, _ := json.Marshal(stepT)
-			err := t.eventBus.Publish(fmt.Sprintf(domain.EventStepStart, worker.NodeID, step.ID), msgData)
-
-			if err != nil {
-				task.State = domain.TaskError
-				task, _ = t.cleanUp(task)
-				return task, err
-			}
-
-			// Wait for either done or error
-			select {
-			case <-doneCh:
-			case <-time.After(30 * time.Second):
-				task.State = domain.TaskError
-				task, _ = t.cleanUp(task)
-				return task, fmt.Errorf("step %d timed out", stepT.SeqOrder)
-			}
-		case domain.NestedTaskStep:
-			task, err := t.Start(stepT.TaskTemplate)
-			if err != nil {
-				step.State = domain.StepError
-			}
-			step.Task = task
-		default:
+	for _, st := range tt.StepTemplates {
+		step, err := t.executeStep(ctx, task.Worker, st)
+		if err != nil {
 			task.State = domain.TaskError
-			task, _ = t.cleanUp(task)
-			return task, errors.New("unsupported step type")
+			return t.cleanup(ctx, task)
 		}
-
 		if step.State == domain.StepError {
 			task.State = domain.TaskError
-			task, _ = t.cleanUp(task)
-			return task, fmt.Errorf("step %d failed", stepT.SeqOrder)
+			return t.cleanup(ctx, task)
 		}
+		task.Steps = append(task.Steps, step)
 	}
 
 	// Task done
 	task.State = domain.TaskDone
-	fmt.Printf("Task %s done (state=%d)\n", tt.Name, task.State)
-
-	task, err := t.cleanUp(task)
-	return task, err
+	return t.cleanup(ctx, task)
 }
-
-func (t *TaskRunner) cleanUp(task domain.Task) (domain.Task, error) {
+func (t *TaskRunner) cleanup(ctx context.Context, task domain.Task) (domain.Task, error) {
 	w := task.Worker
-
 	if w.State == domain.WorkerProvisioned {
-		err := t.nodeManager.Terminate(w)
+		err := t.nodeManager.Terminate(ctx, w)
 		if err != nil {
-			fmt.Printf("FAILED DURING CLEANUP: %v\n", err)
 			task.State = domain.TaskError
 			return task, err
 		}
-
-		task.Worker = w
 	}
-
 	return task, nil
+}
+
+func (t *TaskRunner) executeStep(ctx context.Context, w domain.Worker, st domain.StepTemplate) (domain.Step, error) {
+	switch st.Type {
+	case domain.ProcessStep:
+		subject := fmt.Sprintf(domain.EventStepStart, w.NodeID, st.ID)
+		payload, _ := json.Marshal(st)
+
+		response, err := t.eventBus.Request(ctx, subject, payload)
+		if err != nil {
+			return domain.Step{ID: st.ID, State: domain.StepError}, err
+		}
+
+		var step domain.Step
+		if err := json.Unmarshal(response.Data, &step); err != nil {
+			return domain.Step{ID: st.ID, State: domain.StepError}, err
+		}
+
+		return step, nil
+	case domain.NestedTaskStep:
+		task, err := t.Start(ctx, st.TaskTemplate)
+		step := domain.Step{ID: uuid.New(), State: domain.StepDone, Task: task}
+		if err != nil {
+			step.State = domain.StepError
+		}
+		return step, err
+	default:
+		return domain.Step{ID: uuid.New(), State: domain.StepError}, errors.New("unsupported step type")
+	}
 }

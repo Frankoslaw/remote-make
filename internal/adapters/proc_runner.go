@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"bytes"
+	"context"
 	"os/exec"
 	"remote-make/internal/core/domain"
 
@@ -14,8 +15,8 @@ func NewLocalProcessRunner() *LocalProcessRunner {
 	return &LocalProcessRunner{}
 }
 
-func (r *LocalProcessRunner) Start(pt domain.ProcessTemplate) (domain.Process, error) {
-	cmd := exec.Command("sh", "-c", pt.Cmd)
+func (r *LocalProcessRunner) Start(ctx context.Context, pt domain.ProcessTemplate) (domain.Process, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", pt.Cmd)
 	cmd.Dir = pt.Pwd
 	if pt.Stdin != "" {
 		cmd.Stdin = bytes.NewBufferString(pt.Stdin)

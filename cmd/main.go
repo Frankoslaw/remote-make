@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"remote-make/internal/adapters"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/services"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 func main() {
 	// Setup sample templates
-	taskT := domain.TaskTemplate{
+	tt := domain.TaskTemplate{
 		ID:   uuid.New(),
 		Name: "sample-task",
 		WorkerTemplate: domain.WorkerTemplate{
@@ -82,8 +85,13 @@ func main() {
 	nodeManager := services.NewNodeManager(identRepo, eventBus)
 	taskRunner := services.NewTaskRunner(identRepo, eventBus, nodeManager)
 
-	task, err := taskRunner.Start(taskT)
-	_ = task
+	ctx, cancle := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancle()
+
+	t, err := taskRunner.Start(ctx, tt)
+
+	data, _ := json.MarshalIndent(t, "", "  ")
+	fmt.Println(string(data))
 
 	if err != nil {
 		fmt.Println("Error:", err)
