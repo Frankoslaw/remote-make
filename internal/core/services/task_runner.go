@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
@@ -69,53 +70,68 @@ func (t *TaskRunner) Start(tt domain.TaskTemplate) (domain.Task, error) {
 		}
 		fmt.Printf("Step %d scheduled (state=%d): %s\n", stepT.SeqOrder, step.State, stepT.ProcessTemplate.Cmd)
 
-		doneCh := make(chan struct{})
-		var once sync.Once
-
-		// Subscribe to StepDone
-		doneSubject := fmt.Sprintf(domain.EventStepDone, step.ID)
-		t.eventBus.Subscribe(doneSubject, func(msg *nats.Msg) {
-			once.Do(func() {
-				json.Unmarshal(msg.Data, &step)
-				fmt.Printf("Step %d done (state=%d)\n", stepT.SeqOrder, step.State)
-				close(doneCh)
-			})
-		})
-
-		// Subscribe to StepError
-		errorSubject := fmt.Sprintf(domain.EventStepError, step.ID)
-		t.eventBus.Subscribe(errorSubject, func(msg *nats.Msg) {
-			once.Do(func() {
-				json.Unmarshal(msg.Data, &step)
-				fmt.Printf("Step %d errored (state=%d)\n", stepT.SeqOrder, step.State)
-				close(doneCh)
-			})
-		})
-
 		// Trigger step start
 		step.State = domain.StepRunning
 		fmt.Printf("Step %d running (state=%d)\n", stepT.SeqOrder, step.State)
 
-		msgData, _ := json.Marshal(stepT)
-		err := t.eventBus.Publish(fmt.Sprintf(domain.EventStepStart, worker.NodeID, step.ID), msgData)
-		if err != nil {
-			task.State = domain.TaskError
-			task, _ = t.cleanUp(task)
-			return task, err
-		}
+		switch stepT.Type {
+		case domain.ProcessStep:
+			doneCh := make(chan struct{})
+			var once sync.Once
 
-		// Wait for either done or error
-		select {
-		case <-doneCh:
-			if step.State == domain.StepError {
+			// Subscribe to StepDone
+			doneSubject := fmt.Sprintf(domain.EventStepDone, step.ID)
+			t.eventBus.Subscribe(doneSubject, func(msg *nats.Msg) {
+				once.Do(func() {
+					json.Unmarshal(msg.Data, &step)
+					fmt.Printf("Step %d done (state=%d)\n", stepT.SeqOrder, step.State)
+					close(doneCh)
+				})
+			})
+
+			// Subscribe to StepError
+			errorSubject := fmt.Sprintf(domain.EventStepError, step.ID)
+			t.eventBus.Subscribe(errorSubject, func(msg *nats.Msg) {
+				once.Do(func() {
+					json.Unmarshal(msg.Data, &step)
+					fmt.Printf("Step %d errored (state=%d)\n", stepT.SeqOrder, step.State)
+					close(doneCh)
+				})
+			})
+
+			msgData, _ := json.Marshal(stepT)
+			err := t.eventBus.Publish(fmt.Sprintf(domain.EventStepStart, worker.NodeID, step.ID), msgData)
+
+			if err != nil {
 				task.State = domain.TaskError
 				task, _ = t.cleanUp(task)
-				return task, fmt.Errorf("step %d failed", stepT.SeqOrder)
+				return task, err
 			}
-		case <-time.After(30 * time.Second):
+
+			// Wait for either done or error
+			select {
+			case <-doneCh:
+			case <-time.After(30 * time.Second):
+				task.State = domain.TaskError
+				task, _ = t.cleanUp(task)
+				return task, fmt.Errorf("step %d timed out", stepT.SeqOrder)
+			}
+		case domain.NestedTaskStep:
+			task, err := t.Start(stepT.TaskTemplate)
+			if err != nil {
+				step.State = domain.StepError
+			}
+			step.Task = task
+		default:
 			task.State = domain.TaskError
 			task, _ = t.cleanUp(task)
-			return task, fmt.Errorf("step %d timed out", stepT.SeqOrder)
+			return task, errors.New("unsupported step type")
+		}
+
+		if step.State == domain.StepError {
+			task.State = domain.TaskError
+			task, _ = t.cleanUp(task)
+			return task, fmt.Errorf("step %d failed", stepT.SeqOrder)
 		}
 	}
 
@@ -131,18 +147,12 @@ func (t *TaskRunner) cleanUp(task domain.Task) (domain.Task, error) {
 	w := task.Worker
 
 	if w.State == domain.WorkerProvisioned {
-		w.State = domain.WorkerTerminating
-		fmt.Printf("Worker terminating (state=%d)\n", w.State)
-
 		err := t.nodeManager.Terminate(w)
 		if err != nil {
 			fmt.Printf("FAILED DURING CLEANUP: %v\n", err)
 			task.State = domain.TaskError
 			return task, err
 		}
-
-		w.State = domain.WorkerTerminated
-		fmt.Printf("Worker terminated (state=%d)\n", w.State)
 
 		task.Worker = w
 	}

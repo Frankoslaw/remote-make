@@ -17,10 +17,20 @@ type TaskTemplate struct {
 	StepTemplates  []StepTemplate
 }
 
+type StepType int
+
+const (
+	UnknownStep StepType = 0
+	ProcessStep          = iota + 1
+	NotificationStep
+	NestedTaskStep
+)
+
 type StepTemplate struct {
 	ID       uuid.UUID
 	SeqOrder int
 
+	Type            StepType
 	ProcessTemplate ProcessTemplate
 	TaskTemplate    TaskTemplate
 }

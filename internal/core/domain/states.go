@@ -6,31 +6,31 @@ type StepState int
 type ProcessState int
 
 const (
-	WorkerScheduled WorkerState = iota + 100
+	WorkerError     WorkerState = 0
+	WorkerScheduled             = iota + 1
 	WorkerProvisioning
 	WorkerProvisioned
 	WorkerTerminating
 	WorkerTerminated
-	WorkerError
 )
 
 const (
-	TaskScheduled TaskState = iota + 200
+	TaskError     TaskState = 0
+	TaskScheduled           = iota + 10
 	TaskRunning
 	TaskDone
-	TaskError
 )
 
 const (
-	StepScheduled StepState = iota + 300
+	StepError     StepState = 0
+	StepScheduled           = iota + 20
 	StepRunning
 	StepDone
-	StepError
 )
 
 const (
-	ProcessScheduled ProcessState = iota + 400
+	ProcessError     ProcessState = 0
+	ProcessScheduled              = iota + 30
 	ProcessRunning
 	ProcessDone
-	ProcessError
 )

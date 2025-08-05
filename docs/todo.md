@@ -1,0 +1,14 @@
+TODO:
+- [ ] Fully event driven
+- [ ] Better logging
+- [ ] Allow for becoming a master
+- [ ] Allow for reuse of worker nodes
+- [ ] Fix changing IDs
+- [ ] Proper DB backed repos (sqlc?)
+- [x] Nested tasks
+- [ ] Notification steps
+- [ ] Artifcat managment steps
+- [ ] Docker pulumi backend
+- [ ] Diffrentiate master and slave steps
+- [ ] Per step workers
+- [ ] One worker and one step per task? Ultra nesting

@@ -22,6 +22,7 @@ func main() {
 		StepTemplates: []domain.StepTemplate{
 			{
 				ID:       uuid.New(),
+				Type:     domain.NestedTaskStep,
 				SeqOrder: 1,
 				TaskTemplate: domain.TaskTemplate{
 					ID:   uuid.New(),
@@ -34,6 +35,7 @@ func main() {
 					StepTemplates: []domain.StepTemplate{
 						{
 							ID:       uuid.New(),
+							Type:     domain.ProcessStep,
 							SeqOrder: 1,
 							ProcessTemplate: domain.ProcessTemplate{
 								ID:  uuid.New(),
@@ -42,6 +44,7 @@ func main() {
 						},
 						{
 							ID:       uuid.New(),
+							Type:     domain.ProcessStep,
 							SeqOrder: 2,
 							ProcessTemplate: domain.ProcessTemplate{
 								ID:  uuid.New(),
@@ -53,6 +56,7 @@ func main() {
 			},
 			{
 				ID:       uuid.New(),
+				Type:     domain.ProcessStep,
 				SeqOrder: 2,
 				ProcessTemplate: domain.ProcessTemplate{
 					ID:  uuid.New(),
