@@ -7,16 +7,18 @@ import (
 	"log/slog"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
+
+	"github.com/google/uuid"
 )
 
 type StepRunner struct {
-	nodeIDRepo ports.NodeIdentityRepo
+	nodeID     uuid.UUID
 	eventBus   ports.EventBus
 	procRunner ports.ProcessRunner
 }
 
-func NewStepRunner(ni ports.NodeIdentityRepo, ev ports.EventBus, pr ports.ProcessRunner) *StepRunner {
-	return &StepRunner{nodeIDRepo: ni, eventBus: ev, procRunner: pr}
+func NewStepRunner(ni uuid.UUID, ev ports.EventBus, pr ports.ProcessRunner) *StepRunner {
+	return &StepRunner{nodeID: ni, eventBus: ev, procRunner: pr}
 }
 
 func (s *StepRunner) Start(ctx context.Context, step domain.Step) (domain.Step, error) {
@@ -57,9 +59,7 @@ func (s *StepRunner) Start(ctx context.Context, step domain.Step) (domain.Step, 
 }
 
 func (s *StepRunner) runTask(ctx context.Context, task domain.Task) (domain.Task, error) {
-	nodeID := s.nodeIDRepo.NodeUUID()
-
-	subject := fmt.Sprintf(domain.EventTaskStart, nodeID)
+	subject := fmt.Sprintf(domain.EventTaskStart, &s.nodeID)
 	payload, err := json.Marshal(task)
 	if err != nil {
 		task.State.Event(ctx, "error")

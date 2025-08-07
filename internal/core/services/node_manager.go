@@ -3,134 +3,43 @@ package services
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
-
-	"github.com/pulumi/pulumi-docker/sdk/v4/go/docker"
-	"github.com/pulumi/pulumi/sdk/v3/go/auto"
-	"github.com/pulumi/pulumi/sdk/v3/go/auto/optdestroy"
-	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-type NodeManager struct {
-	nodeIDRepo ports.NodeIdentityRepo
-	eventBus   ports.EventBus
+type MultiNodeManager struct {
+	backends map[string]ports.NodeManager
 }
 
-func NewNodeManager(ni ports.NodeIdentityRepo, ev ports.EventBus) *NodeManager {
-	return &NodeManager{nodeIDRepo: ni, eventBus: ev}
+func NewMultiNodeManager() *MultiNodeManager {
+	return &MultiNodeManager{backends: make(map[string]ports.NodeManager)}
 }
 
-func (n *NodeManager) Provision(ctx context.Context, worker domain.Worker) (domain.Worker, error) {
-	slog.Debug("Provisioning worker", "worker_id", worker.ID)
-	worker.State.Event(ctx, "provision")
-
-	if worker.Tmpl.IsLocal {
-		worker.State.Event(ctx, "provisioned")
-		worker.NodeID = n.nodeIDRepo.NodeUUID()
-
-		slog.Debug("Provisioned local worker", "worker_id", worker.ID, "node_id", worker.NodeID)
-		return worker, nil
+func (n *MultiNodeManager) RegisterBackend(backend string, manager ports.NodeManager) {
+	if _, exists := n.backends[backend]; exists {
+		panic(fmt.Sprintf("backend %s already registered", backend))
 	}
-
-	// Remote docker provisioning using Pulumi
-	stackName := fmt.Sprintf("remote-make-worker-%s", worker.ID)
-	deployFunc := func(ctx *pulumi.Context) error {
-		image, err := docker.NewRemoteImage(ctx, fmt.Sprintf("remote-make-image-%s", worker.Tmpl.DockerImage), &docker.RemoteImageArgs{
-			Name: pulumi.String(worker.Tmpl.DockerImage),
-		})
-		if err != nil {
-			return err
-		}
-
-		container, err := docker.NewContainer(ctx, fmt.Sprintf("remote-make-worker-%s", worker.ID), &docker.ContainerArgs{
-			Image: image.ImageId,
-			Name:  pulumi.String(fmt.Sprintf("remote-make-worker-%s", worker.ID)),
-			Envs: pulumi.StringArray{
-				pulumi.String(fmt.Sprintf("NODE_UUID=%s", worker.NodeID)),
-			},
-			Command: pulumi.StringArray{pulumi.String("sleep"), pulumi.String("infinity")},
-		})
-		if err != nil {
-			return err
-		}
-
-		ctx.Export("containerName", container.Name)
-		return nil
-	}
-
-	stack, err := auto.UpsertStackInlineSource(ctx, stackName, "remote-make", deployFunc)
-	if err != nil {
-		worker.State.Event(ctx, "error")
-		worker.Err = err
-
-		return worker, err
-	}
-
-	err = stack.SetConfig(ctx, "docker:host", auto.ConfigValue{Value: "unix:///var/run/docker.sock"})
-	if err != nil {
-		worker.State.Event(ctx, "error")
-		worker.Err = err
-
-		return worker, err
-	}
-
-	_, err = stack.Refresh(ctx)
-	if err != nil {
-		worker.State.Event(ctx, "error")
-		worker.Err = err
-
-		return worker, err
-	}
-
-	res, err := stack.Up(ctx, optup.Message(fmt.Sprintf("Provisioning worker %s", worker.ID)))
-	if err != nil {
-		worker.State.Event(ctx, "error")
-		worker.Err = err
-
-		return worker, err
-	}
-	containerName := res.Outputs["containerName"].Value.(string)
-
-	worker.State.Event(ctx, "provisioned")
-	slog.Debug("Provisioned remote Docker worker", "worker_id", worker.ID, "container_name", containerName)
-
-	return worker, nil
+	n.backends[backend] = manager
 }
 
-func (n *NodeManager) Terminate(ctx context.Context, worker domain.Worker) (domain.Worker, error) {
-	slog.Debug("Terminating worker", "worker_id", worker.ID)
-	worker.State.Event(ctx, "terminate")
-	localNodeID := n.nodeIDRepo.NodeUUID()
-
-	if worker.NodeID == localNodeID {
-		worker.State.Event(ctx, "terminated")
-
-		slog.Debug("Terminated local worker", "worker_id", worker.ID, "node_id", worker.NodeID)
-		return worker, nil
-	}
-
-	stackName := fmt.Sprintf("remote-make-worker-%s", worker.ID)
-	stack, err := auto.SelectStackInlineSource(ctx, stackName, "remote-make", nil)
-	if err != nil {
+func (n *MultiNodeManager) Provision(ctx context.Context, worker domain.Worker) (domain.Worker, error) {
+	if n.backends[worker.Tmpl.Backend] == nil {
 		worker.State.Event(ctx, "error")
-		worker.Err = err
+		worker.Err = fmt.Errorf("unknown backend: %s", worker.Tmpl.Backend)
 
-		return worker, err
+		return worker, worker.Err
 	}
 
-	_, err = stack.Destroy(ctx, optdestroy.Message("Destroying worker container"))
-	if err != nil {
+	return n.backends[worker.Tmpl.Backend].Provision(ctx, worker)
+}
+
+func (n *MultiNodeManager) Terminate(ctx context.Context, worker domain.Worker) (domain.Worker, error) {
+	if n.backends[worker.Tmpl.Backend] == nil {
 		worker.State.Event(ctx, "error")
-		worker.Err = err
+		worker.Err = fmt.Errorf("unknown backend: %s", worker.Tmpl.Backend)
 
-		return worker, err
+		return worker, worker.Err
 	}
 
-	worker.State.Event(ctx, "terminated")
-	slog.Debug("Terminated remote worker", "worker_id", worker.ID, "node_id", worker.NodeID)
-
-	return worker, nil
+	return n.backends[worker.Tmpl.Backend].Terminate(ctx, worker)
 }

@@ -5,7 +5,7 @@ import "github.com/google/uuid"
 type WorkerTemplate struct {
 	ID uuid.UUID
 
-	IsLocal     bool
+	Backend     string
 	DockerImage string
 }
 

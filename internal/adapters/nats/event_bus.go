@@ -3,18 +3,18 @@ package nats
 import (
 	"context"
 	"encoding/json"
+	"remote-make/internal/adapters/config"
 	"time"
 
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 )
 
-type NatsEventBus struct {
-	conn   *nats.Conn
+type EmbeddedNats struct {
 	server *server.Server
 }
 
-func NewEmbeddedNatsEventBus() (*NatsEventBus, error) {
+func NewEmbeddedNats() (*EmbeddedNats, error) {
 	opts := &server.Options{}
 	ns, err := server.NewServer(opts)
 
@@ -28,16 +28,32 @@ func NewEmbeddedNatsEventBus() (*NatsEventBus, error) {
 		return nil, err
 	}
 
-	nc, err := nats.Connect(ns.ClientURL())
+	return &EmbeddedNats{server: ns}, nil
+}
+
+func (n *EmbeddedNats) ClientURL() string {
+	return n.server.ClientURL()
+}
+
+func (e *EmbeddedNats) Shutdown() {
+	if e.server != nil {
+		e.server.Shutdown()
+	}
+}
+
+type NatsEventBus struct {
+	conn *nats.Conn
+}
+
+func NewNatsEventBus(cfg *config.Config) (*NatsEventBus, error) {
+	nc, err := nats.Connect(cfg.NATSURL)
 
 	if err != nil {
-		ns.Shutdown()
 		return nil, err
 	}
 
 	return &NatsEventBus{
-		conn:   nc,
-		server: ns,
+		conn: nc,
 	}, nil
 }
 
@@ -57,9 +73,6 @@ func (n *NatsEventBus) Request(ctx context.Context, subject string, data []byte)
 func (n *NatsEventBus) Shutdown() {
 	if n.conn != nil {
 		n.conn.Close()
-	}
-	if n.server != nil {
-		n.server.Shutdown()
 	}
 }
 

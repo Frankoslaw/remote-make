@@ -7,23 +7,24 @@ import (
 	"log/slog"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
+
+	"github.com/google/uuid"
 )
 
 type TaskRunner struct {
-	nodeIDRepo ports.NodeIdentityRepo
-	eventBus   ports.EventBus
+	nodeID   uuid.UUID
+	eventBus ports.EventBus
 }
 
-func NewTaskRunner(ni ports.NodeIdentityRepo, ev ports.EventBus) *TaskRunner {
-	return &TaskRunner{nodeIDRepo: ni, eventBus: ev}
+func NewTaskRunner(ni uuid.UUID, ev ports.EventBus) *TaskRunner {
+	return &TaskRunner{nodeID: ni, eventBus: ev}
 }
 
 func (t *TaskRunner) Start(ctx context.Context, task domain.Task) (domain.Task, error) {
 	slog.Debug("Starting task", "task_id", task.ID)
 	task.State.Event(ctx, "start")
-	nodeID := t.nodeIDRepo.NodeUUID()
 
-	subject := fmt.Sprintf(domain.EventNodeProvision, nodeID)
+	subject := fmt.Sprintf(domain.EventNodeProvision, t.nodeID)
 
 	worker := domain.NewWorker(&task.Tmpl.WorkerTemplate)
 	payload, err := json.Marshal(worker)
@@ -68,7 +69,7 @@ func (t *TaskRunner) Start(ctx context.Context, task domain.Task) (domain.Task, 
 
 func (t *TaskRunner) cleanup(ctx context.Context, task domain.Task) (domain.Task, error) {
 	slog.Debug("Cleaning up task", "task_id", task.ID)
-	nodeID := t.nodeIDRepo.NodeUUID()
+	nodeID := t.nodeID
 
 	subject := fmt.Sprintf(domain.EventNodeTerminate, nodeID)
 	payload, _ := json.Marshal(task.Worker)
@@ -94,7 +95,7 @@ func (t *TaskRunner) cleanup(ctx context.Context, task domain.Task) (domain.Task
 }
 
 func (t *TaskRunner) runStep(ctx context.Context, worker domain.Worker, step domain.Step) (domain.Step, error) {
-	nodeID := t.nodeIDRepo.NodeUUID()
+	nodeID := t.nodeID
 	if step.Tmpl.Kind == domain.StepKindProcess {
 		nodeID = worker.NodeID
 	}

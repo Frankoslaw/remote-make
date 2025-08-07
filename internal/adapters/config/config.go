@@ -10,7 +10,7 @@ import (
 )
 
 type Config struct {
-	NodeUUID uuid.UUID
+	NodeID uuid.UUID
 
 	TUIEnabled bool
 	APIEnabled bool
@@ -39,10 +39,10 @@ func Load() *Config {
 	// Required
 	nodeUUIDstr := os.Getenv("NODE_UUID")
 	if nodeUUIDstr == "" {
-		cfg.NodeUUID = uuid.New()
+		cfg.NodeID = uuid.New()
 		slog.Warn("NODE_UUID is not set, generating a new UUID")
 	} else {
-		cfg.NodeUUID, err = uuid.Parse(nodeUUIDstr)
+		cfg.NodeID, err = uuid.Parse(nodeUUIDstr)
 		if err != nil {
 			panic("Invalid NODE_UUID format: " + err.Error())
 		}

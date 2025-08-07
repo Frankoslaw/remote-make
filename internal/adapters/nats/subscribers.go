@@ -7,24 +7,25 @@ import (
 	"remote-make/internal/core/ports"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 )
 
 type NodeManagerSubscriber struct {
-	nodeIDRepo  ports.NodeIdentityRepo
+	nodeID      uuid.UUID
 	nodeManager ports.NodeManager
 }
 
-func NewNodeManagerSubscriber(ni ports.NodeIdentityRepo, nm ports.NodeManager) *NodeManagerSubscriber {
+func NewNodeManagerSubscriber(ni uuid.UUID, nm ports.NodeManager) *NodeManagerSubscriber {
 	return &NodeManagerSubscriber{
-		nodeIDRepo:  ni,
+		nodeID:      ni,
 		nodeManager: nm,
 	}
 }
 
 func (s *NodeManagerSubscriber) RegisterSubscribers(ev ports.EventBus) {
-	ev.Subscribe(fmt.Sprintf(domain.EventNodeProvision, s.nodeIDRepo.NodeUUID()), s.NodeProvision)
-	ev.Subscribe(fmt.Sprintf(domain.EventNodeTerminate, s.nodeIDRepo.NodeUUID()), s.NodeTerminate)
+	ev.Subscribe(fmt.Sprintf(domain.EventNodeProvision, s.nodeID), s.NodeProvision)
+	ev.Subscribe(fmt.Sprintf(domain.EventNodeTerminate, s.nodeID), s.NodeTerminate)
 }
 
 func (s *NodeManagerSubscriber) NodeProvision(msg *nats.Msg) {
@@ -54,19 +55,19 @@ func (s *NodeManagerSubscriber) NodeTerminate(msg *nats.Msg) {
 }
 
 type TaskRunnerSubscriber struct {
-	nodeIDRepo ports.NodeIdentityRepo
+	nodeID     uuid.UUID
 	taskRunner ports.TaskRunner
 }
 
-func NewTaskRunnerSubscriber(ni ports.NodeIdentityRepo, tr ports.TaskRunner) *TaskRunnerSubscriber {
+func NewTaskRunnerSubscriber(ni uuid.UUID, tr ports.TaskRunner) *TaskRunnerSubscriber {
 	return &TaskRunnerSubscriber{
-		nodeIDRepo: ni,
+		nodeID:     ni,
 		taskRunner: tr,
 	}
 }
 
 func (s *TaskRunnerSubscriber) RegisterSubscribers(ev ports.EventBus) {
-	ev.Subscribe(fmt.Sprintf(domain.EventTaskStart, s.nodeIDRepo.NodeUUID()), s.TaskStart)
+	ev.Subscribe(fmt.Sprintf(domain.EventTaskStart, s.nodeID), s.TaskStart)
 }
 
 func (s *TaskRunnerSubscriber) TaskStart(msg *nats.Msg) {
@@ -83,19 +84,19 @@ func (s *TaskRunnerSubscriber) TaskStart(msg *nats.Msg) {
 }
 
 type StepRunnerSubscriber struct {
-	nodeIDRepo ports.NodeIdentityRepo
+	nodeID     uuid.UUID
 	stepRunner ports.StepRunner
 }
 
-func NewStepRunnerSubscriber(ni ports.NodeIdentityRepo, sr ports.StepRunner) *StepRunnerSubscriber {
+func NewStepRunnerSubscriber(ni uuid.UUID, sr ports.StepRunner) *StepRunnerSubscriber {
 	return &StepRunnerSubscriber{
-		nodeIDRepo: ni,
+		nodeID:     ni,
 		stepRunner: sr,
 	}
 }
 
 func (s *StepRunnerSubscriber) RegisterSubscribers(ev ports.EventBus) {
-	ev.Subscribe(fmt.Sprintf(domain.EventStepStart, s.nodeIDRepo.NodeUUID()), s.StepStart)
+	ev.Subscribe(fmt.Sprintf(domain.EventStepStart, s.nodeID), s.StepStart)
 }
 
 func (s *StepRunnerSubscriber) StepStart(msg *nats.Msg) {

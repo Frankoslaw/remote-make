@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"remote-make/internal/adapters"
 	"remote-make/internal/adapters/config"
 	"remote-make/internal/adapters/nats"
+	"remote-make/internal/adapters/pulumi"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/services"
 	"time"
@@ -22,7 +24,7 @@ func main() {
 		ID: uuid.New(),
 		WorkerTemplate: domain.WorkerTemplate{
 			ID:      uuid.New(),
-			IsLocal: true,
+			Backend: "local",
 		},
 		StepTemplates: []domain.StepTemplate{
 			{
@@ -33,7 +35,7 @@ func main() {
 					ID: uuid.New(),
 					WorkerTemplate: domain.WorkerTemplate{
 						ID:      uuid.New(),
-						IsLocal: true,
+						Backend: "local",
 					},
 					StepTemplates: []domain.StepTemplate{
 						{
@@ -69,10 +71,11 @@ func main() {
 		},
 	}
 
+	// Generic services
 	w := os.Stderr
 	slog.SetDefault(slog.New(
 		tint.NewHandler(w, &tint.Options{
-			Level:      slog.LevelDebug,
+			Level:      slog.LevelInfo,
 			TimeFormat: time.Kitchen,
 		}),
 	))
@@ -80,35 +83,55 @@ func main() {
 	cfg := config.Load()
 	slog.Info("Configuration loaded", "config", cfg)
 
-	// Generic services
-	identRepo := adapters.NewNodeIdentityRepo()
-	eventBus, err := nats.NewEmbeddedNatsEventBus()
-	if err != nil {
-		panic(err)
+	if cfg.EmbeddedNATSEnabled {
+		ns, err := nats.NewEmbeddedNats()
+		if err != nil {
+			slog.Error("Failed to start embedded NATS server", "error", err)
+			return
+		}
+		defer ns.Shutdown()
+		cfg.NATSURL = ns.ClientURL()
+		slog.Info("Embedded NATS server started", "url", cfg.NATSURL)
 	}
 
+	eventBus, err := nats.NewNatsEventBus(cfg)
+	if err != nil {
+		slog.Error("Failed to connect to NATS server", "error", err)
+		return
+	}
+	defer eventBus.Shutdown()
+	slog.Info("Connected to NATS server", "url", cfg.NATSURL)
+
 	// Master services
-	nodeManager := services.NewNodeManager(identRepo, eventBus)
-	nodeManagerSubscriber := nats.NewNodeManagerSubscriber(identRepo, nodeManager)
+	localNodeManager := pulumi.NewLocalNodeManager(cfg.NodeID, eventBus)
+	dockerNodeManager := pulumi.NewDockerNodeManager(cfg.NodeID, eventBus)
+
+	nodeManager := services.NewMultiNodeManager()
+	nodeManager.RegisterBackend("local", localNodeManager)
+	nodeManager.RegisterBackend("docker", dockerNodeManager)
+
+	nodeManagerSubscriber := nats.NewNodeManagerSubscriber(cfg.NodeID, nodeManager)
 	nodeManagerSubscriber.RegisterSubscribers(eventBus)
 
-	taskRunner := services.NewTaskRunner(identRepo, eventBus)
-	taskRunnerSubscriber := nats.NewTaskRunnerSubscriber(identRepo, taskRunner)
+	taskRunner := services.NewTaskRunner(cfg.NodeID, eventBus)
+	taskRunnerSubscriber := nats.NewTaskRunnerSubscriber(cfg.NodeID, taskRunner)
 	taskRunnerSubscriber.RegisterSubscribers(eventBus)
 
 	// Worker services
 	procRunner := adapters.NewLocalProcessRunner()
-	stepRunner := services.NewStepRunner(identRepo, eventBus, procRunner)
-	stepRunnerSubscriber := nats.NewStepRunnerSubscriber(identRepo, stepRunner)
+	stepRunner := services.NewStepRunner(cfg.NodeID, eventBus, procRunner)
+	stepRunnerSubscriber := nats.NewStepRunnerSubscriber(cfg.NodeID, stepRunner)
 	stepRunnerSubscriber.RegisterSubscribers(eventBus)
 
 	ctx, cancle := context.WithTimeout(context.Background(), 360*time.Second)
 	defer cancle()
 
 	task := domain.NewTask(&tt)
-	_, err = taskRunner.Start(ctx, task)
-
+	task, err = taskRunner.Start(ctx, task)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Error: %v", err))
 	}
+
+	taskString, _ := json.MarshalIndent(task, "", "\t")
+	slog.Info(fmt.Sprintf("Task: %s", string(taskString)))
 }
