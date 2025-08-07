@@ -19,18 +19,18 @@ type EventBus interface {
 }
 
 type NodeManager interface {
-	Provision(ctx context.Context, wt domain.WorkerTemplate) (domain.Worker, error)
-	Terminate(ctx context.Context, w domain.Worker) (domain.Worker, error)
+	Provision(ctx context.Context, worker domain.Worker) (domain.Worker, error)
+	Terminate(ctx context.Context, worker domain.Worker) (domain.Worker, error)
 }
 
 type TaskRunner interface {
-	Start(ctx context.Context, tt domain.TaskTemplate) (domain.Task, error)
+	Start(ctx context.Context, task domain.Task) (domain.Task, error)
 }
 
 type StepRunner interface {
-	Start(ctx context.Context, st domain.StepTemplate) (domain.Step, error)
+	Start(ctx context.Context, step domain.Step) (domain.Step, error)
 }
 
 type ProcessRunner interface {
-	Start(ctx context.Context, pt domain.ProcessTemplate) (domain.Process, error)
+	Start(ctx context.Context, process domain.Process) (domain.Process, error)
 }

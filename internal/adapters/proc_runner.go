@@ -3,10 +3,9 @@ package adapters
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"os/exec"
 	"remote-make/internal/core/domain"
-
-	"github.com/google/uuid"
 )
 
 type LocalProcessRunner struct{}
@@ -15,11 +14,14 @@ func NewLocalProcessRunner() *LocalProcessRunner {
 	return &LocalProcessRunner{}
 }
 
-func (r *LocalProcessRunner) Start(ctx context.Context, pt domain.ProcessTemplate) (domain.Process, error) {
-	cmd := exec.CommandContext(ctx, "sh", "-c", pt.Cmd)
-	cmd.Dir = pt.Pwd
-	if pt.Stdin != "" {
-		cmd.Stdin = bytes.NewBufferString(pt.Stdin)
+func (r *LocalProcessRunner) Start(ctx context.Context, process domain.Process) (domain.Process, error) {
+	slog.Debug("Starting local process", "process_id", process.ID)
+	process.State.Event(ctx, "start")
+
+	cmd := exec.CommandContext(ctx, "sh", "-c", process.Tmpl.Cmd)
+	cmd.Dir = process.Tmpl.Pwd
+	if process.Tmpl.Stdin != "" {
+		cmd.Stdin = bytes.NewBufferString(process.Tmpl.Stdin)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -27,15 +29,18 @@ func (r *LocalProcessRunner) Start(ctx context.Context, pt domain.ProcessTemplat
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	exitCode := 0
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		exitCode = exitErr.ExitCode()
+	if err != nil {
+		process.State.Event(ctx, "error")
+		process.Err = err
+
+		return process, err
 	}
 
-	return domain.Process{
-		ID:       uuid.New(),
-		ExitCode: exitCode,
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-	}, err
+	process.State.Event(ctx, "completed")
+	process.ExitCode = cmd.ProcessState.ExitCode()
+	process.Stdout = stdout.String()
+	process.Stderr = stderr.String()
+
+	slog.Debug("Local process completed", "process_id", process.ID, "exit_code", process.ExitCode)
+	return process, err
 }

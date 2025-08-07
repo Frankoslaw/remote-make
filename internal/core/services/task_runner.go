@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
-
-	"github.com/google/uuid"
 )
 
 type TaskRunner struct {
@@ -19,48 +18,56 @@ func NewTaskRunner(ni ports.NodeIdentityRepo, ev ports.EventBus) *TaskRunner {
 	return &TaskRunner{nodeIDRepo: ni, eventBus: ev}
 }
 
-func (t *TaskRunner) Start(ctx context.Context, tt domain.TaskTemplate) (domain.Task, error) {
+func (t *TaskRunner) Start(ctx context.Context, task domain.Task) (domain.Task, error) {
+	slog.Debug("Starting task", "task_id", task.ID)
+	task.State.Event(ctx, "start")
 	nodeID := t.nodeIDRepo.NodeUUID()
 
-	// Schedule task
-	task := domain.Task{ID: uuid.New(), State: domain.TaskScheduled}
-
-	// Provision task
 	subject := fmt.Sprintf(domain.EventNodeProvision, nodeID)
-	payload, _ := json.Marshal(tt.WorkerTemplate)
+
+	worker := domain.NewWorker(&task.Tmpl.WorkerTemplate)
+	payload, err := json.Marshal(worker)
+	if err != nil {
+		task.State.Event(ctx, "error")
+		task.Err = err
+		return task, err
+	}
 
 	response, err := t.eventBus.Request(ctx, subject, payload)
 	if err != nil {
-		return domain.Task{ID: task.ID, State: domain.TaskError}, err
+		task.State.Event(ctx, "error")
+		task.Err = err
+		return task, err
 	}
 
-	var worker domain.Worker
-	if err := json.Unmarshal(response.Data, &worker); err != nil {
-		return domain.Task{ID: task.ID, State: domain.TaskError}, err
+	var w domain.Worker
+	if err := json.Unmarshal(response.Data, &w); err != nil {
+		task.State.Event(ctx, "error")
+		task.Err = err
+		return task, err
 	}
-	task.Worker = worker
+	task.Worker = w
 
-	// Run task
-	task.State = domain.TaskRunning
-	for _, st := range tt.StepTemplates {
-		step, err := t.startStep(ctx, task.Worker, st)
+	for _, st := range task.Tmpl.StepTemplates {
+		step := domain.NewStep(&st)
+		step, err := t.runStep(ctx, task.Worker, step)
 		task.Steps = append(task.Steps, step)
 
 		if err != nil {
-			task.State = domain.TaskError
-			return t.cleanup(ctx, task)
-		}
-		if step.State == domain.StepError {
-			task.State = domain.TaskError
+			task.State.Event(ctx, "error")
+			task.Err = err
 			return t.cleanup(ctx, task)
 		}
 	}
 
-	// Task done
-	task.State = domain.TaskDone
+	task.State.Event(ctx, "complete")
+	slog.Debug("Task completed", "task_id", task.ID)
+
 	return t.cleanup(ctx, task)
 }
+
 func (t *TaskRunner) cleanup(ctx context.Context, task domain.Task) (domain.Task, error) {
+	slog.Debug("Cleaning up task", "task_id", task.ID)
 	nodeID := t.nodeIDRepo.NodeUUID()
 
 	subject := fmt.Sprintf(domain.EventNodeTerminate, nodeID)
@@ -68,38 +75,49 @@ func (t *TaskRunner) cleanup(ctx context.Context, task domain.Task) (domain.Task
 
 	response, err := t.eventBus.Request(ctx, subject, payload)
 	if err != nil {
-		task.State = domain.TaskError
+		task.State.Event(ctx, "error")
+		task.Err = err
 		return task, err
 	}
 
 	var worker domain.Worker
 	if err := json.Unmarshal(response.Data, &worker); err != nil {
-		task.State = domain.TaskError
+		task.State.Event(ctx, "error")
+		task.Err = err
 		return task, err
 	}
 
 	task.Worker = worker
+	slog.Debug("Task cleanup complete", "task_id", task.ID)
+
 	return task, nil
 }
 
-func (t *TaskRunner) startStep(ctx context.Context, w domain.Worker, st domain.StepTemplate) (domain.Step, error) {
+func (t *TaskRunner) runStep(ctx context.Context, worker domain.Worker, step domain.Step) (domain.Step, error) {
 	nodeID := t.nodeIDRepo.NodeUUID()
-	if st.ProcessTemplate.ID != uuid.Nil {
-		nodeID = w.NodeID
+	if step.Tmpl.Kind == domain.StepKindProcess {
+		nodeID = worker.NodeID
 	}
 
 	subject := fmt.Sprintf(domain.EventStepStart, nodeID)
-	payload, _ := json.Marshal(st)
+	payload, _ := json.Marshal(step)
 
 	response, err := t.eventBus.Request(ctx, subject, payload)
 	if err != nil {
-		return domain.Step{ID: uuid.New(), State: domain.StepError}, err
+		step.State.Event(ctx, "error")
+		step.Err = err
+
+		return step, err
 	}
 
-	var step domain.Step
-	if err := json.Unmarshal(response.Data, &step); err != nil {
-		return domain.Step{ID: uuid.New(), State: domain.StepError}, err
+	var s domain.Step
+	if err := json.Unmarshal(response.Data, &s); err != nil {
+		step.State.Event(ctx, "error")
+		step.Err = err
+
+		return step, err
 	}
+	step = s
 
 	return step, nil
 }

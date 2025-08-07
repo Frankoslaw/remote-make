@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  nats:
+    image: nats:latest
+    container_name: nats-server
+    ports:
+      - "4222:4222"     # NATS client port
+      - "8222:8222"     # NATS monitoring port (needed for NUI)
+
+  nui:
+    image: ghcr.io/nats-nui/nui:latest
+    container_name: nats-nui
+    depends_on:
+      - nats
+    ports:
+      - "8080:8080"     # NUI web UI port
+      - "31311:31311" # NUI API port
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NATS_MONITOR_URL=http://nats:8222

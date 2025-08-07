@@ -3,30 +3,40 @@ package domain
 import "github.com/google/uuid"
 
 type WorkerTemplate struct {
-	ID      uuid.UUID
-	Name    string
-	IsLocal bool
+	ID uuid.UUID
+
+	IsLocal     bool
+	DockerImage string
 }
 
 type TaskTemplate struct {
-	ID             uuid.UUID
-	Name           string
+	ID uuid.UUID
+
 	IsAtomic       bool
 	IsConcurrent   bool
 	WorkerTemplate WorkerTemplate
 	StepTemplates  []StepTemplate
 }
 
+type StepKind int
+
+const (
+	StepKindProcess StepKind = iota
+	StepKindTask
+)
+
 type StepTemplate struct {
 	ID       uuid.UUID
 	SeqOrder int
 
-	ProcessTemplate ProcessTemplate
-	TaskTemplate    TaskTemplate
+	Kind            StepKind
+	ProcessTemplate *ProcessTemplate
+	TaskTemplate    *TaskTemplate
 }
 
 type ProcessTemplate struct {
-	ID    uuid.UUID
+	ID uuid.UUID
+
 	Cmd   string
 	Pwd   string
 	Stdin string
