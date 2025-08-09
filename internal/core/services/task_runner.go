@@ -1,3 +1,6 @@
+//go:build master
+// +build master
+
 package services
 
 import (
@@ -31,6 +34,8 @@ func (t *TaskRunner) Start(ctx context.Context, task domain.Task) (domain.Task, 
 	if err != nil {
 		task.State.Event(ctx, "error")
 		task.Err = err
+		slog.Error(err.Error())
+
 		return task, err
 	}
 
@@ -38,6 +43,8 @@ func (t *TaskRunner) Start(ctx context.Context, task domain.Task) (domain.Task, 
 	if err != nil {
 		task.State.Event(ctx, "error")
 		task.Err = err
+		slog.Error(err.Error())
+
 		return task, err
 	}
 
@@ -45,6 +52,8 @@ func (t *TaskRunner) Start(ctx context.Context, task domain.Task) (domain.Task, 
 	if err := json.Unmarshal(response.Data, &w); err != nil {
 		task.State.Event(ctx, "error")
 		task.Err = err
+		slog.Error(err.Error())
+
 		return task, err
 	}
 	task.Worker = w
@@ -57,6 +66,8 @@ func (t *TaskRunner) Start(ctx context.Context, task domain.Task) (domain.Task, 
 		if err != nil {
 			task.State.Event(ctx, "error")
 			task.Err = err
+			slog.Error(err.Error())
+
 			return t.cleanup(ctx, task)
 		}
 	}
@@ -78,6 +89,8 @@ func (t *TaskRunner) cleanup(ctx context.Context, task domain.Task) (domain.Task
 	if err != nil {
 		task.State.Event(ctx, "error")
 		task.Err = err
+		slog.Error(err.Error())
+
 		return task, err
 	}
 
@@ -85,6 +98,8 @@ func (t *TaskRunner) cleanup(ctx context.Context, task domain.Task) (domain.Task
 	if err := json.Unmarshal(response.Data, &worker); err != nil {
 		task.State.Event(ctx, "error")
 		task.Err = err
+		slog.Error(err.Error())
+
 		return task, err
 	}
 
@@ -107,6 +122,7 @@ func (t *TaskRunner) runStep(ctx context.Context, worker domain.Worker, step dom
 	if err != nil {
 		step.State.Event(ctx, "error")
 		step.Err = err
+		slog.Error(err.Error())
 
 		return step, err
 	}

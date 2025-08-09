@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -28,6 +29,10 @@ type Config struct {
 
 	EmbeddedSQLiteEnabled bool
 	SQLiteURL             string
+
+	WorkerBinPath string
+	MasterBinPath string
+	DockerHost    string
 }
 
 func Load() *Config {
@@ -83,6 +88,26 @@ func Load() *Config {
 	cfg.SQLiteURL = os.Getenv("SQLITE_URL")
 	if cfg.SQLiteURL == "" {
 		cfg.SQLiteURL = "file:./remote-make.db"
+	}
+
+	// Pulumi
+	cfg.WorkerBinPath = os.Getenv("WORKER_BIN_PATH")
+	if cfg.WorkerBinPath == "" {
+		cfg.WorkerBinPath = "./bin/remote-make-worker"
+		slog.Warn("WORKER_BIN_PATH is not set, defaulting to ./bin/remote-make-worker")
+	}
+	cfg.WorkerBinPath, _ = filepath.Abs(cfg.WorkerBinPath)
+
+	cfg.MasterBinPath = os.Getenv("MASTER_BIN_PATH")
+	if cfg.MasterBinPath == "" {
+		cfg.MasterBinPath = "./bin/remote-make-master"
+		slog.Warn("MASTER_BIN_PATH is not set, defaulting to ./bin/remote-make-master")
+	}
+	cfg.MasterBinPath, _ = filepath.Abs(cfg.MasterBinPath)
+
+	cfg.DockerHost = os.Getenv("DOCKER_HOST")
+	if cfg.DockerHost == "" {
+		cfg.DockerHost = "unix:///var/run/docker.sock"
 	}
 
 	return cfg

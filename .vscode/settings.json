@@ -1,0 +1,4 @@
+
+{
+    "go.buildTags": "master worker"
+}

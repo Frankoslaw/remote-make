@@ -1,3 +1,6 @@
+//go:build master
+// +build master
+
 package main
 
 import (
@@ -30,12 +33,22 @@ func main() {
 			{
 				ID:       uuid.New(),
 				SeqOrder: 1,
+				Kind:     domain.StepKindProcess,
+				ProcessTemplate: &domain.ProcessTemplate{
+					ID:  uuid.New(),
+					Cmd: "echo 'Hello from step executed on host machine'",
+				},
+			},
+			{
+				ID:       uuid.New(),
+				SeqOrder: 2,
 				Kind:     domain.StepKindTask,
 				TaskTemplate: &domain.TaskTemplate{
 					ID: uuid.New(),
 					WorkerTemplate: domain.WorkerTemplate{
 						ID:      uuid.New(),
 						Backend: "local",
+						// DockerImage: "alpine:latest",
 					},
 					StepTemplates: []domain.StepTemplate{
 						{
@@ -44,28 +57,10 @@ func main() {
 							Kind:     domain.StepKindProcess,
 							ProcessTemplate: &domain.ProcessTemplate{
 								ID:  uuid.New(),
-								Cmd: "echo 'Hello from sub step 1'",
-							},
-						},
-						{
-							ID:       uuid.New(),
-							SeqOrder: 2,
-							Kind:     domain.StepKindProcess,
-							ProcessTemplate: &domain.ProcessTemplate{
-								ID:  uuid.New(),
-								Cmd: "echo 'Hello from sub step 2'",
+								Cmd: "echo 'Hello from step executed on remote Docker worker'",
 							},
 						},
 					},
-				},
-			},
-			{
-				ID:       uuid.New(),
-				SeqOrder: 2,
-				Kind:     domain.StepKindProcess,
-				ProcessTemplate: &domain.ProcessTemplate{
-					ID:  uuid.New(),
-					Cmd: "echo 'Hello from last step 2'",
 				},
 			},
 		},
@@ -75,7 +70,7 @@ func main() {
 	w := os.Stderr
 	slog.SetDefault(slog.New(
 		tint.NewHandler(w, &tint.Options{
-			Level:      slog.LevelInfo,
+			Level:      slog.LevelDebug,
 			TimeFormat: time.Kitchen,
 		}),
 	))
@@ -104,7 +99,7 @@ func main() {
 
 	// Master services
 	localNodeManager := pulumi.NewLocalNodeManager(cfg.NodeID, eventBus)
-	dockerNodeManager := pulumi.NewDockerNodeManager(cfg.NodeID, eventBus)
+	dockerNodeManager := pulumi.NewDockerNodeManager(cfg, cfg.NodeID, eventBus)
 
 	nodeManager := services.NewMultiNodeManager()
 	nodeManager.RegisterBackend("local", localNodeManager)
@@ -118,6 +113,9 @@ func main() {
 	taskRunnerSubscriber.RegisterSubscribers(eventBus)
 
 	// Worker services
+	healthSubscriber := nats.NewHealthSubscriber(cfg.NodeID)
+	healthSubscriber.RegisterSubscribers(eventBus)
+
 	procRunner := adapters.NewLocalProcessRunner()
 	stepRunner := services.NewStepRunner(cfg.NodeID, eventBus, procRunner)
 	stepRunnerSubscriber := nats.NewStepRunnerSubscriber(cfg.NodeID, stepRunner)
@@ -129,9 +127,12 @@ func main() {
 	task := domain.NewTask(&tt)
 	task, err = taskRunner.Start(ctx, task)
 	if err != nil {
-		slog.Error(fmt.Sprintf("Error: %v", err))
+		slog.Error(err.Error())
 	}
 
 	taskString, _ := json.MarshalIndent(task, "", "\t")
 	slog.Info(fmt.Sprintf("Task: %s", string(taskString)))
+
+	// // keep alive server
+	select {}
 }

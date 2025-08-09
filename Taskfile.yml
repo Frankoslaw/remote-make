@@ -1,0 +1,14 @@
+version: '3'
+
+vars:
+  GREETING: Hello, World!
+
+tasks:
+  build:
+    cmds:
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 CC="zig cc -target x86_64-linux" CXX="zig c++ -target x86_64-linux" go build -tags=master -o bin/remote-make-master ./cmd/master
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 CC="zig cc -target x86_64-linux" CXX="zig c++ -target x86_64-linux" go build -tags=worker -o bin/remote-make-worker ./cmd/worker
+  run:
+    cmds:
+      - task: build
+      - ./bin/remote-make-master

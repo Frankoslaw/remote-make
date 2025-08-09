@@ -1,2 +1,6 @@
-nats-server
-remote-make
+*.env
+!.env.example
+bin
+main
+*.db
+scripts

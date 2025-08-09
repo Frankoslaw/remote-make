@@ -1,15 +1,43 @@
 TODO:
-- [ ] Fully event driven
-- [ ] Better logging
-- [ ] Allow for becoming a master
+- [x] Fully event driven
+- [x] Better logging
 - [ ] Allow for reuse of worker nodes
 - [ ] Fix changing IDs
 - [ ] Proper DB backed repos (sqlc?)
-- [x] Nested tasks
-- [ ] Notification steps
-- [ ] Artifcat managment steps
-- [ ] Docker pulumi backend
-- [ ] Diffrentiate master and slave steps
-- [ ] Per step workers
-- [ ] One worker and one step per task? Ultra nesting
-- [ ] Decouple event_bus.go from nats.Msg
+- [ ] Proper io pipes support on same node
+- [ ] Sync DB if master changed
+- [ ] Allow for reuse of resources like docker images
+- [ ] Allow accesing current state and step logs during run
+- [ ] Publish state changes for cli and web api
+- [ ] Add dlq queue for preserving invalid messagess
+- [ ] Add nats message validation
+- [ ] Enable jetstream for message persistance
+- [ ] Client binary:
+    - [ ] CLI using cobra + viper
+    - [ ] HTTP API
+    - [ ] Dev Shell:
+        - [ ] Keep alive or interrupt
+        - [ ] SSH
+        - [ ] SFTP
+    - [ ] Web socket support or 
+- [ ] Step types:
+    - [x] Posix process
+    - [x] Nested task:
+        - [ ] Allow for becoming a master
+    - [ ] Generic multi step system
+    - [ ] Notification:
+        - [ ] Discord
+        - [ ] Slack
+    - [ ] Artifact managment
+- [ ] Worker backends:
+    - [x] Local
+    - [x] Docker
+    - [ ] SSH
+    - [ ] QEMU
+    - [ ] AWS
+    - [ ] AWS Spot (interruption support)
+
+Rejected Ideas:
+- [ ] ~~Per step workers~~
+- [ ] ~~One worker and one step per task? Ultra nesting~~
+- [ ] ~~Decouple event_bus.go from nats.Msg~~

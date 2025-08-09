@@ -1,3 +1,6 @@
+//go:build master || worker
+// +build master worker
+
 package services
 
 import (
@@ -34,6 +37,7 @@ func (s *StepRunner) Start(ctx context.Context, step domain.Step) (domain.Step, 
 		if err != nil {
 			step.State.Event(ctx, "error")
 			step.Err = err
+			slog.Error(err.Error())
 
 			return step, err
 		}
@@ -47,6 +51,7 @@ func (s *StepRunner) Start(ctx context.Context, step domain.Step) (domain.Step, 
 		if err != nil {
 			step.State.Event(ctx, "error")
 			step.Err = err
+			slog.Error(err.Error())
 
 			return step, err
 		}
@@ -64,6 +69,7 @@ func (s *StepRunner) runTask(ctx context.Context, task domain.Task) (domain.Task
 	if err != nil {
 		task.State.Event(ctx, "error")
 		task.Err = err
+		slog.Error(err.Error())
 
 		return task, err
 	}
@@ -72,14 +78,16 @@ func (s *StepRunner) runTask(ctx context.Context, task domain.Task) (domain.Task
 	if err != nil {
 		task.State.Event(ctx, "error")
 		task.Err = err
+		slog.Error(err.Error())
 
 		return task, err
 	}
 
 	var t domain.Task
-	if err := json.Unmarshal(response.Data, &task); err != nil {
+	if err := json.Unmarshal(response.Data, &t); err != nil {
 		task.State.Event(ctx, "error")
 		task.Err = err
+		slog.Error(err.Error())
 
 		return task, err
 	}

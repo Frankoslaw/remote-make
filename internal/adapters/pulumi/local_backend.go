@@ -1,3 +1,6 @@
+//go:build master
+// +build master
+
 package pulumi
 
 import (
@@ -37,6 +40,7 @@ func (n *LocalNodeManager) Terminate(ctx context.Context, worker domain.Worker) 
 	if worker.NodeID != n.nodeID {
 		worker.State.Event(ctx, "error")
 		worker.Err = fmt.Errorf("worker %s is not managed by this node", worker.ID)
+		slog.Error(worker.Err.Error())
 
 		return worker, worker.Err
 	}

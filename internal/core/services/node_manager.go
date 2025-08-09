@@ -1,8 +1,12 @@
+//go:build master
+// +build master
+
 package services
 
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"remote-make/internal/core/domain"
 	"remote-make/internal/core/ports"
 )
@@ -26,6 +30,7 @@ func (n *MultiNodeManager) Provision(ctx context.Context, worker domain.Worker) 
 	if n.backends[worker.Tmpl.Backend] == nil {
 		worker.State.Event(ctx, "error")
 		worker.Err = fmt.Errorf("unknown backend: %s", worker.Tmpl.Backend)
+		slog.Error(worker.Err.Error())
 
 		return worker, worker.Err
 	}
@@ -37,6 +42,7 @@ func (n *MultiNodeManager) Terminate(ctx context.Context, worker domain.Worker) 
 	if n.backends[worker.Tmpl.Backend] == nil {
 		worker.State.Event(ctx, "error")
 		worker.Err = fmt.Errorf("unknown backend: %s", worker.Tmpl.Backend)
+		slog.Error(worker.Err.Error())
 
 		return worker, worker.Err
 	}

@@ -112,3 +112,23 @@ func (s *StepRunnerSubscriber) StepStart(msg *nats.Msg) {
 	}()
 
 }
+
+type HealthSubscriber struct {
+	nodeID uuid.UUID
+}
+
+func NewHealthSubscriber(ni uuid.UUID) *HealthSubscriber {
+	return &HealthSubscriber{
+		nodeID: ni,
+	}
+}
+
+func (s *HealthSubscriber) RegisterSubscribers(ev ports.EventBus) {
+	ev.Subscribe(fmt.Sprintf(domain.EventNodeReady, s.nodeID), s.NodeReady)
+}
+
+func (s *HealthSubscriber) NodeReady(msg *nats.Msg) {
+	go func() {
+		_ = msg.Respond([]byte("OK"))
+	}()
+}
