@@ -1,6 +1,1 @@
-*.env
-!.env.example
-bin
-main
-*.db
-scripts
+data
