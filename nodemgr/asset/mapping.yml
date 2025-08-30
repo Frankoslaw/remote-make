@@ -1,0 +1,18 @@
+mapping:
+  - match:
+      image: "ubuntu:24.04"
+      match_type: "glob" # glob | exact
+    overrides:
+      all:
+        user: "ubuntu"
+      aws:
+        # TODO: this is bas idea as AWS ami are region and arch dependent
+        ami: "ami-0a116fa7c861dd5f9"
+        image_type: "ami"
+      libvirt:
+        # TODO: fix as this does not take the arch of the server into the account
+        # TODO: support auto download for known distros
+        iso: "ubuntu-24.04.3-live-server-amd64.iso"
+        image_type: "iso"
+      docker:
+        image: "ubuntu:24.04"    # keep same

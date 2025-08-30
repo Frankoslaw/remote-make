@@ -1,0 +1,12 @@
+name: ubuntu-worker-small
+cpu: 2
+memoryMB: 256
+image: ubuntu:24.04
+user: ubuntu
+overrides:
+  docker:
+    env: ["FOO=bar"]
+  libvirt:
+    memoryMB: 1024
+    diskGB: 3
+    network: default
