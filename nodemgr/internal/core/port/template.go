@@ -9,14 +9,11 @@ type TemplateRepository interface {
 	Delete(id domain.TemplateID) error
 }
 
-type MappingRepository interface {
-	Create(mapping domain.TemplateMapping) error
-	Get(id domain.MappingID) (*domain.TemplateMapping, error)
-	List() ([]*domain.TemplateMapping, error)
-	Delete(id domain.MappingID) error
-}
-
 type TemplateService interface {
-	RenderTemplate(tmplID domain.TemplateID, providerID domain.ProviderID) (domain.NodeSpec, error)
-	ResolveSpec(spec domain.NodeSpec) (domain.NodeSpec, error)
+	CreateTemplate(template domain.NodeTemplate) (domain.TemplateID, error)
+	GetTemplate(id domain.TemplateID) (*domain.NodeTemplate, error)
+	ListTemplates() ([]*domain.NodeTemplate, error)
+	DeleteTemplate(id domain.TemplateID) error
+
+	RenderTemplate(templateID domain.TemplateID, providerID domain.ProviderID) (domain.NodeSpec, error)
 }

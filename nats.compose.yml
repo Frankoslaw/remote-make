@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   nats:
     image: nats:latest
@@ -7,7 +5,6 @@ services:
       - "4222:4222"
       - "6222:6222"
       - "8222:8222"
-
   nui:
     image: ghcr.io/nats-nui/nui:latest
     ports:

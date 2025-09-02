@@ -1,0 +1,33 @@
+version: '3'
+
+vars:
+  PORT_MOCK_DIR: internal/core/port/mocks
+
+tasks:
+  install-mockgen:
+    desc: "Install mockgen binary and gomock test dependency"
+    cmds:
+      - go install go.uber.org/mock/mockgen@latest
+      - go get go.uber.org/mock/gomock@latest
+
+  gen:port:
+    desc: "Generate mocks for internal/core/port/*.go -> internal/core/port/mocks"
+    deps: [ install-mockgen ]
+    cmds:
+      - |
+        set -euo pipefail
+        DIR="{{.PORT_MOCK_DIR}}"
+        mkdir -p "$DIR"
+        for src in internal/core/port/*.go; do
+          case "$src" in
+            *"_mock.go"|*"/mocks/"*) continue;;
+          esac
+          base="$(basename "$src" .go)"
+          mockgen -source="$src" -destination="$DIR/${base}_mock.go" -package=mocks
+        done
+
+  gen:all:
+    desc: "Run all configured mock generation tasks"
+    deps: [ gen:port ]
+    cmds:
+      - true

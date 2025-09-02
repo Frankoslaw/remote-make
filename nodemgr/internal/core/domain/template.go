@@ -1,41 +1,32 @@
 package domain
 
 type TemplateID string
-type MappingID string
-type MatchType string
+
+type ImageType string
 
 const (
-	MatchTypeExact MatchType = "exact"
-	MatchTypeGlob  MatchType = "glob"
+	ImageTypeAlias  ImageType = "alias"
+	ImageTypeDocker ImageType = "docker"
+	ImageTypeISO    ImageType = "iso"
+	ImageTypeQCOW2  ImageType = "qcow2"
+	ImageTypeAMI    ImageType = "ami"
 )
 
 type NodeTemplate struct {
-	TemplateID TemplateID
+	TemplateID TemplateID `json:"-"`
 
-	Name  string
-	Image string
-	User  string
+	Name      string    `json:"name"`
+	Image     string    `json:"image"`
+	ImageType ImageType `json:"image_type"`
+	User      string    `json:"user"`
+	CPUs      int       `json:"cpus"`
+	MemoryMB  int       `json:"memory_mb"`
+	DiskMB    int       `json:"disk_mb"`
 
-	CPUs     int // vCPUs
-	MemoryMB int
-	DiskMB   int
-
-	Extra             map[string]any
-	ProviderOverrides map[ProviderID]map[string]any
+	Extra             map[string]any                `json:"-"`
+	ProviderOverrides map[ProviderID]map[string]any `json:"-"`
 }
 
 func (n NodeTemplate) ID() TemplateID {
 	return n.TemplateID
-}
-
-type TemplateMapping struct {
-	MappingID MappingID
-
-	Match             map[string]string
-	MatchType         MatchType // glob | exact
-	ProviderOverrides map[ProviderID]map[string]any
-}
-
-func (n TemplateMapping) ID() MappingID {
-	return n.MappingID
 }
